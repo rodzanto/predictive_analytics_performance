@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html>
+<body bgcolor="#cee6ef">
+
+<h1>Predictive Analytics UI</h1>
+<h2>Model inference</h2>
+<div>Select inference input values</div>
+
+<div>
+  <br>
+  Subscribers<br>
+  <input type="range" id="subs" min="0" max="100000" step="100" name="subs" onchange="updateInput('subsTxt', this.value);">
+  <input type="text" id="subsTxt" value="" readonly="true"><br>
+  Transactions<br>
+  <input type="range" id="trans"  min="0" max="5000" step="10" name="trans" onchange="updateInput('transTxt', this.value);">
+  <input type="text" id="transTxt" value="" readonly="true"><br>
+  Memory<br>
+  <input type="range" id="mem"  min="1" max="20" step="1" name="mem" onchange="updateInput('memTxt', this.value);">
+  <input type="text" id="memTxt" value="" readonly="true"><br>
+  <br>
+  <br>
+</div>
+
+<div class="chart-container" style="position: relative; ">
+	<canvas id="inferenceChart" height="100"></canvas>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.7.3/dist/Chart.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+<script>
+
+	function updateInput(id, val) {
+        document.getElementById(id).value=val
+		updateChart()
+    }
+
+	function paintChart(dataPoints, infPoints) {
+		let ctx = document.getElementById("inferenceChart").getContext('2d')
+		var inferenceChart = new Chart(ctx, {
+			type: 'line',
+			data: {
+				labels: [...dataPoints.map((v, i) => i), ...infPoints.map((v, i) => i + dataPoints.length)],
+				datasets: [{
+					label: '% CPU usage',
+					data: [...dataPoints, ...infPoints],
+					backgroundColor: [
+						'rgba(255, 99, 132, 0.2)'
+					],
+					borderColor: [
+						'rgba(255,99,132,1)'
+					],
+					borderWidth: 1
+				}]
+			},
+			options: {
+				responsive: true,
+    			maintainAspectRatio: true,
+				aspectRatio: 2,
+				scales: {
+					yAxes: [{
+						ticks: {
+							beginAtZero:true
+						}
+					}]
+				}
+			}
+		})
+	}
+
+	function updateChart() {
+		
+		let subs = document.getElementById("subs").value
+		let trans = document.getElementById("trans").value
+		let mem = document.getElementById("mem").value
+		if ((subs.length == 0) || (trans.length == 0) || (mem.length == 0)) {
+			console.error("Fields cannot be blank")
+		} 
+
+		getDataPoints("base")
+		.then((dataPoints) => {
+			getInference(subs, trans, mem)
+			.then((infPoints) => paintChart(dataPoints, infPoints))
+		})
+	} 
+
+	function getInference(subs, trans, mem) {
+
+		return new Promise((accept, reject) => {
+			console.log(subs, trans, mem)
+			let request = ("{\"data\":\"subs,trans,mem\\n" + subs + "," + trans + "," + mem + "\"}")
+			console.log("Sending: " + request)
+
+			$.ajax({
+				url: "https://892b5atlc2.execute-api.us-east-1.amazonaws.com/test/predictar",
+				type: "POST",
+				data: request,
+				contentType: "application/json",
+				success: response => {
+					console.log(response)
+					accept(response)
+				},
+				error: error => {
+					console.log('ERROR:', error)
+					reject(error)
+				}
+			})
+		})
+	}
+
+	function getDataPoints(key) {
+	    return new Promise((accept, reject) => {
+			$.ajax({
+				url: "https://892b5atlc2.execute-api.us-east-1.amazonaws.com/test/datapoints/" + key,
+				type: "GET",
+				contentType: "application/json",
+				success: response => {
+					console.log(response)
+					accept(response.cpu)
+				},
+				error: error => {
+					console.log('ERROR:', error)
+					reject(error)
+				}
+			})
+		})
+	}
+
+	updateInput('subsTxt', document.getElementById('subs').value)
+	updateInput('transTxt', document.getElementById('trans').value)
+	updateInput('memTxt', document.getElementById('mem').value)
+
+</script>
+
+</body>
+</html>

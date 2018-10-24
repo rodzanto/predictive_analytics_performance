@@ -1,0 +1,293 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Predictive Analytics UI - Optimization</title>
+	<style>
+		.tooltip {
+		    position: relative;
+		    display: inline-block;
+		    border-bottom: 1px dotted black;
+		}
+
+		.tooltip .tooltiptext {
+		    visibility: hidden;
+		    width: 120px;
+		    background-color: teal;
+		    color: #fff;
+		    text-align: center;
+		    border-radius: 6px;
+		    padding: 5px 0;
+
+		    /* Position the tooltip */
+		    position: absolute;
+		    z-index: 1;
+		}
+
+		.tooltip:hover .tooltiptext {
+		    visibility: visible;
+		}
+	</style>
+</head>
+<body>
+<body bgcolor="#ddd0b3">
+
+<h1>Predictive Analytics UI</h1>
+<h2>Hyperparameter optimization</h2>
+<div>Select hyperparameter values</div>
+
+<table>
+	<tr>
+		<td class="tooltip">Model<span class="tooltiptext">Type of regression library used for the model.<br> i.e. R earth, or R mda library for MARS algorithm.</span></td>
+  		<td><select id="model" >
+				<option value="earth">earth</option>
+				<option value="mda">mda</option>
+			</select>
+		</td>
+		<td width="70"/>
+		<td>Nickname</td>
+		<td><input type="text" id="nick"/></td>
+	</tr>
+
+	<tr>
+		<td class="tooltip">Penalty<span class="tooltiptext">Penalty defines if fitting is penalized to make the model more flexible.</span></td>
+		<td>
+			<select id="penalty">
+				<option value="0">0</option>
+				<option value="3">3</option>
+				<option value="6">6</option>
+			</select>
+		</td>
+		<td width="70"/>
+		<td><input type="button" onclick="postOpt();" value="Submit optimization"/></td>
+	</tr>
+	<tr>
+		<td class="tooltip">Threshold<span class="tooltiptext">The threshold defines how sensitive is the model to small differences or changes in the data.</span></td>
+		<td>
+			<select id="threshold">
+				<option value="0">0</option>
+				<option value="0.005">0.005</option>
+				<option value="0.01">0.01</option>
+			</select>
+		</td>
+	</tr>
+	<tr>
+		<td class="tooltip">Min Span<span class="tooltiptext">Minimum distance allowed between model knots.</span></td>
+		<td>
+			<select id="minspan">
+				<option value="0">0</option>
+				<option value="1">1</option>
+				<option value="2">2</option>
+			</select>
+		</td>
+	</tr>
+	<tr>
+		<td class="tooltip">Max Degree<span class="tooltiptext">Maximum number of terms allowed in the model definition.</span></td>
+		<td>
+			<select id="maxdegree">
+				<option value="1">1</option>
+				<option value="2">2</option>
+				<option value="3">3</option>
+			</select>
+		</td>
+	</tr>
+  <br>
+</table>
+
+<input type="button" onclick="updateChart();" value="Test"/>
+
+
+<div class="chart-container" style="position: relative; ">
+	<canvas id="inferenceChart" height="100"></canvas>
+</div>
+
+<div style="font-weight: bold;" id="output"></div>
+<br/>
+<div id="showData"></div>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js@2.7.3/dist/Chart.js"></script>
+<script src="https://ajax.googleapis.com/ajax/libs/jquery/3.3.1/jquery.min.js"></script>
+
+<script>
+
+	var meanError = null
+	setInterval(() => getLeaderboard().then((myTable) => { CreateTableFromJSON(myTable) }), 10000)
+
+	function paintChart(dataPoints, infPoints) {
+		let ctx = document.getElementById("inferenceChart").getContext('2d')
+		var inferenceChart = new Chart(ctx, {
+			type: 'line',
+			data: {
+				labels: [...dataPoints.map((v, i) => i)],
+				datasets: [
+					{
+						label: 'Data',
+						data: [...dataPoints],
+						backgroundColor: [
+							'rgba(87, 174, 229, 0.1)'
+						],
+						borderColor: [
+							'rgba(87, 174, 229, 0.7)'
+						],
+						borderWidth: 1
+					},
+					{
+						label: 'Prediction',
+						data: [...infPoints],
+						backgroundColor: [
+							'rgba(211, 76, 69, 0.1)'
+						],
+						borderColor: [
+							'rgba(211, 76, 69, 1)'
+						],
+						borderWidth: 1
+					}
+				]
+			},
+			options: {
+				responsive: true,
+    			maintainAspectRatio: true,
+				aspectRatio: 2,
+				scales: {
+					yAxes: [{
+						ticks: {
+							beginAtZero:true
+						}
+					}]
+				}
+			}
+		})
+	}
+
+	function updateChart() {
+		
+		let model = document.getElementById("model").value
+		let penalty = document.getElementById("penalty").value
+		let threshold = document.getElementById("threshold").value
+		let minspan = document.getElementById("minspan").value
+		let maxdegree = document.getElementById("maxdegree").value
+		if ((model.length == 0) || (penalty.length == 0) || (threshold.length == 0) || (minspan.length == 0) || (maxdegree.length == 0)) {
+			reject("Fields cannot be blank")
+		} 
+
+		getDataPoints("base")
+		.then((dataPoints) => {
+			getDataPoints(model + "," + penalty + "," + threshold + "," + minspan + "," + maxdegree)
+			.then((optPoints) => {
+				paintChart(dataPoints, optPoints)
+			})
+		})
+	} 
+
+	function getDataPoints(key) {
+	    return new Promise((accept, reject) => {
+			$.ajax({
+				url: "https://892b5atlc2.execute-api.us-east-1.amazonaws.com/test/datapoints/" + key,
+				type: "GET",
+				contentType: "application/json",
+				success: response => {
+					console.log(response)
+					meanError = Number(response.mse).toFixed(8)
+					document.getElementById('output').innerHTML=("Mean Squared Error (MSE): " + meanError);
+					accept(response.cpu)
+				},
+				error: error => {
+					console.log('ERROR:', error)
+					reject(error)
+				}
+			})
+		})
+	}
+
+	function getLeaderboard() {
+	    return new Promise((accept, reject) => {
+			$.ajax({
+				url: "https://892b5atlc2.execute-api.us-east-1.amazonaws.com/test/leaderboard/",
+				type: "GET",
+				contentType: "application/json",
+				success: response => {
+					//console.log("Leaderboard: "+response)
+					accept(response)
+				},
+				error: error => {
+					console.log('ERROR:', error)
+					reject(error)
+				}
+			})
+		})
+	}
+
+
+    function CreateTableFromJSON(myTable) {
+        //var myTable = getLeaderboard();
+
+        // EXTRACT VALUE FOR HTML HEADER. 
+        var col = [];
+        for (var i = 0; i < myTable.length; i++) {
+            for (var key in myTable[i]) {
+                if (col.indexOf(key) === -1) {
+                    col.push(key);
+                }
+            }
+        }
+
+        // CREATE DYNAMIC TABLE.
+        var table = document.createElement("table");
+
+        // CREATE HTML TABLE HEADER ROW USING THE EXTRACTED HEADERS ABOVE.
+
+        var tr = table.insertRow(-1);                   // TABLE ROW.
+
+        for (var i = 0; i < col.length; i++) {
+            var th = document.createElement("th");      // TABLE HEADER.
+            th.innerHTML = col[i];
+            tr.appendChild(th);
+        }
+
+        // ADD JSON DATA TO THE TABLE AS ROWS.
+        for (var i = 0; i < myTable.length; i++) {
+
+            tr = table.insertRow(-1);
+
+            for (var j = 0; j < col.length; j++) {
+                var tabCell = tr.insertCell(-1);
+                tabCell.innerHTML = myTable[i][col[j]];
+            }
+        }
+
+        // FINALLY ADD THE NEWLY CREATED TABLE WITH JSON DATA TO A CONTAINER.
+        var divContainer = document.getElementById("showData");
+        var d = new Date();
+        divContainer.innerHTML = "<hr><h2>Optimization leaderboard </h2><p><b>Last updated: </b>"+d+"</p>";
+        divContainer.appendChild(table);
+    }
+
+    function postOpt(){
+    	//Post optimization to dynamoDB leaderboard
+    	let nick = document.getElementById("nick").value
+    	var milliseconds = (new Date).getTime();
+		if ((meanError === null) || (nick.length == 0)) {
+			alert("Fields cannot be blank")
+			return false
+		}
+		//Call post...
+		$.ajax({
+			url: "https://892b5atlc2.execute-api.us-east-1.amazonaws.com/test/leaderboard/",
+			type: "POST",
+			data: "{ \"name\": \"" + nick + "\", \"score\": " + meanError.toString() + ", \"timestamp\": " + milliseconds.toString() + "}",
+			contentType: "application/json",
+			success: response => {
+				getLeaderboard()
+				.then((myTable) => {
+					CreateTableFromJSON(myTable)
+				})
+			},
+			error: error => {
+				console.log(error)
+			}
+		})
+    }
+</script>
+
+
+</body>
+</html>
